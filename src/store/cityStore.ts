@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { BuildingData, mapUserToBuilding } from '@/lib/buildingMapper';
-import { fetchGitHubUser, getDemoUsers, GitHubUserData } from '@/lib/github';
+import { fetchGitHubUser, GitHubUserData } from '@/lib/github';
+import { getExpandedDemoUsers } from '@/lib/demoData';
 
 interface CityState {
   buildings: BuildingData[];
@@ -87,7 +88,7 @@ export const useCityStore = create<CityState>((set, get) => ({
   },
 
   loadDemoCity: () => {
-    const demoUsers = getDemoUsers();
+    const demoUsers = getExpandedDemoUsers();
     const buildings = demoUsers.map((user: GitHubUserData, i: number) =>
       mapUserToBuilding(user, i)
     );
