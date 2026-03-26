@@ -21,6 +21,25 @@ export default function Building({ data }: BuildingProps) {
   const isSelected = selectedBuilding?.id === data.id;
   const isNight = timeOfDay < 0.25 || timeOfDay > 0.75;
 
+  // ★ BRIGHTNESS: Scale emissive intensity based on commits + repos
+  const brightness = useMemo(() => {
+    const commitFactor = Math.min(data.userData.totalCommits / 10000, 1);
+    const repoFactor = Math.min(data.userData.totalRepos / 500, 1);
+    // Weighted blend: commits 60%, repos 40%
+    const raw = commitFactor * 0.6 + repoFactor * 0.4;
+    // Map to emissive range: dim (0.02) → bright (0.6)
+    const nightIntensity = 0.02 + raw * 0.58;
+    const dayIntensity = 0.0 + raw * 0.15;
+    return { nightIntensity, dayIntensity, raw };
+  }, [data.userData.totalCommits, data.userData.totalRepos]);
+
+  // Brighter emissive color — mix building color with warm golden for high-activity
+  const emissiveColor = useMemo(() => {
+    const base = new THREE.Color(data.color);
+    const warm = new THREE.Color('#FFA726');
+    return base.lerp(warm, brightness.raw * 0.4);
+  }, [data.color, brightness.raw]);
+
   // Create window texture
   const windowTexture = useMemo(() => {
     const canvas = document.createElement('canvas');
@@ -39,7 +58,8 @@ export default function Building({ data }: BuildingProps) {
       ctx.fillRect(0, i, 128, 2);
     }
 
-    // Windows
+    // Windows — more lit for higher activity users
+    const litChance = isNight ? (0.3 + brightness.raw * 0.6) : 0;
     const cols = 4;
     const windowW = 16;
     const windowH = floorHeight * 0.5;
@@ -50,13 +70,14 @@ export default function Building({ data }: BuildingProps) {
         const x = marginX + col * (windowW + marginX);
         const y = row * floorHeight + floorHeight * 0.2;
 
-        // Random chance window is lit (based on stars, more at night)
-        const isLit = isNight && Math.random() < 0.7;
+        const isLit = Math.random() < litChance;
 
         if (isLit) {
-          ctx.fillStyle = '#F6E05E';
-          ctx.shadowColor = '#F6E05E';
-          ctx.shadowBlur = 4;
+          // Brighter golden windows for high-activity users
+          const warmth = brightness.raw > 0.4 ? '#FFB74D' : '#F6E05E';
+          ctx.fillStyle = warmth;
+          ctx.shadowColor = warmth;
+          ctx.shadowBlur = 4 + brightness.raw * 6;
         } else {
           ctx.fillStyle = 'rgba(120,160,200,0.3)';
           ctx.shadowBlur = 0;
@@ -70,7 +91,7 @@ export default function Building({ data }: BuildingProps) {
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
     return texture;
-  }, [data.color, data.windowCount, isNight]);
+  }, [data.color, data.windowCount, isNight, brightness.raw]);
 
   // Hover animation
   useFrame((_, delta) => {
@@ -119,8 +140,8 @@ export default function Building({ data }: BuildingProps) {
             map={windowTexture}
             roughness={0.6}
             metalness={0.1}
-            emissive={isNight ? data.color : '#000000'}
-            emissiveIntensity={isNight ? 0.1 : 0}
+            emissive={emissiveColor}
+            emissiveIntensity={isNight ? brightness.nightIntensity : brightness.dayIntensity}
           />
         </mesh>
 
@@ -137,12 +158,25 @@ export default function Building({ data }: BuildingProps) {
           </mesh>
         )}
 
+        {/* Base glow for high-activity buildings at night */}
+        {brightness.raw > 0.3 && isNight && (
+          <pointLight
+            position={[0, -data.height / 2 + 1, data.depth / 2 + 1]}
+            color={emissiveColor}
+            intensity={brightness.raw * 3}
+            distance={8 + brightness.raw * 12}
+            decay={2}
+          />
+        )}
+
         {/* Roof */}
         <mesh position={[0, data.height / 2 + 0.15, 0]} castShadow>
           <boxGeometry args={[data.width + 0.3, 0.3, data.depth + 0.3]} />
           <meshStandardMaterial
             color={new THREE.Color(data.color).multiplyScalar(0.7)}
             roughness={0.4}
+            emissive={emissiveColor}
+            emissiveIntensity={isNight ? brightness.nightIntensity * 0.5 : 0}
           />
         </mesh>
 
@@ -152,6 +186,17 @@ export default function Building({ data }: BuildingProps) {
             <cylinderGeometry args={[0.05, 0.05, 2.5, 6]} />
             <meshStandardMaterial color="#94a3b8" metalness={0.8} roughness={0.2} />
           </mesh>
+        )}
+
+        {/* Rooftop beacon light for very active users */}
+        {brightness.raw > 0.5 && (
+          <pointLight
+            position={[0, data.height / 2 + 2, 0]}
+            color={emissiveColor}
+            intensity={brightness.raw * 2}
+            distance={15}
+            decay={2}
+          />
         )}
 
         {/* Name label */}
