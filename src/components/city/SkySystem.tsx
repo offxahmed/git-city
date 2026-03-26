@@ -100,9 +100,7 @@ export default function SkySystem() {
           <bufferGeometry>
             <bufferAttribute
               attach="attributes-position"
-              count={1500}
-              array={stars}
-              itemSize={3}
+              args={[stars, 3]}
             />
           </bufferGeometry>
           <pointsMaterial color="#ffffff" size={0.5} sizeAttenuation transparent opacity={0.8} />
